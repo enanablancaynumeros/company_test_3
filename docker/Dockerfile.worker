@@ -1,0 +1,34 @@
+FROM ubuntu:16.04
+
+ENV PYTHONUNBUFFERED 1
+RUN apt-get update --fix-missing && \
+    apt-get upgrade -y && \
+    apt-get install -y build-essential \
+    python-pip python3-pip python-dev \
+    libffi-dev libssl-dev git libpq-dev \
+    unixodbc unixodbc-dev \
+    wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /tmp/*
+
+RUN pip3 install -U pip setuptools wheel
+RUN mkdir /src
+
+ADD db_handlers/requirements.txt /src/db_handlers/requirements.txt
+ADD workers/requirements.txt /src/workers/requirements.txt
+RUN pip3 install -r /src/workers/requirements.txt
+RUN pip3 install -r /src/db_handlers/requirements.txt
+
+RUN wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -P /usr/bin/ && chmod +x /usr/bin/wait-for-it.sh
+
+ADD db_handlers /src/db_handlers
+RUN pip3 install -e /src/db_handlers
+
+ADD workers /src/workers
+RUN pip3 install -e /src/workers
+
+ADD workers/worker_entrypoint.sh /entrypoint.sh
+WORKDIR /src
+
+ENTRYPOINT ["bash", "/entrypoint.sh"]

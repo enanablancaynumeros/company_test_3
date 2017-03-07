@@ -1,0 +1,104 @@
+version: "3"
+
+services:
+  web:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.api
+    restart: on-failure
+    environment:
+      DB_ADDRESS: db
+      DB_FULL_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+    ports:
+      - "80:8000"
+    depends_on:
+      - db
+
+  db:
+    restart: on-failure
+    image: "postgres:latest"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB_FULL_URL: ${POSTGRES_DB}
+      PGDATA: ${PGDATA_LOCATION}
+    ports:
+      - "5432:5432"
+
+  worker:
+    restart: on-failure
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.worker
+    depends_on:
+      - celeryrabbitmq
+      - db
+    environment:
+      DB_ADDRESS: db
+      DB_FULL_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      CELERY_RABBITMQ_URL: ${CELERY_RABBITMQ_USER}:${CELERY_RABBITMQ_PASS}@celeryrabbitmq:5672/
+
+  kombu_consumer:
+    restart: on-failure
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.kombu
+    depends_on:
+      - farfetchrabbitmq
+      - celeryrabbitmq
+      - db
+    environment:
+      DB_ADDRESS: db
+      DB_FULL_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      CELERY_RABBITMQ_URL: ${CELERY_RABBITMQ_USER}:${CELERY_RABBITMQ_PASS}@celeryrabbitmq:5672/
+      FARFETCH_QUEUE_URL: ${FARFETCH_RABBITMQ_USER}:${FARFETCH_RABBITMQ_PASS}@farfetchrabbitmq:5672/
+      FARFETCH_QUEUE_NAME: ${FARFETCH_QUEUE_NAME}
+
+  farfetchrabbitmq:
+    restart: on-failure
+    image: "rabbitmq:3-management"
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+      RABBITMQ_DEFAULT_USER: ${FARFETCH_RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${FARFETCH_RABBITMQ_PASS}
+      RABBITMQ_DEFAULT_VHOST: "/"
+
+  celeryrabbitmq:
+    restart: on-failure
+    image: "rabbitmq:3-management"
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQE"
+      RABBITMQ_DEFAULT_USER: ${CELERY_RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${CELERY_RABBITMQ_PASS}
+      RABBITMQ_DEFAULT_VHOST: "/"
+
+  flower:
+    restart: on-failure
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.worker
+    depends_on:
+      - celeryrabbitmq
+      - db
+    environment:
+      DB_ADDRESS: db
+      DB_FULL_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      CELERY_RABBITMQ_URL: ${CELERY_RABBITMQ_USER}:${CELERY_RABBITMQ_PASS}@celeryrabbitmq:5672/
+    ports:
+      - "5555:5555"
+    command: --flower
+
+  tests:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.tests
+    environment:
+      DB_ADDRESS: db
+      DB_FULL_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      FARFETCH_QUEUE_URL: ${FARFETCH_RABBITMQ_USER}:${FARFETCH_RABBITMQ_PASS}@farfetchrabbitmq:5672/
+      FARFETCH_QUEUE_NAME: ${FARFETCH_QUEUE_NAME}
+      CELERY_RABBITMQ_URL: ${CELERY_RABBITMQ_USER}:${CELERY_RABBITMQ_PASS}@celeryrabbitmq:5672/
+    depends_on:
+      - web
+      - worker
+      - kombu_consumer

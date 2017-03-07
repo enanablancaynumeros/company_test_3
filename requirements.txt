@@ -1,0 +1,12 @@
+docker-compose==1.11.2
+
+-e workers
+-e db_handlers
+-e kombu_pub_sub
+-e web
+
+-r web/requirements.txt
+-r workers/requirements.txt
+-r kombu_pub_sub/requirements.txt
+-r db_handlers/requirements.txt
+-r tests/requirements.txt
